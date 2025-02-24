@@ -45,8 +45,12 @@ import {
   IonSkeletonText,
   IonRippleEffect,
   IonActionSheet,
+  IonSpinner,
+  IonToggle,
+  IonMenuButton,
+  IonPopover,
 } from "@ionic/react";
-import { add, trash, star, create, filter, search, timeOutline, flagOutline, colorPaletteOutline, pricetagOutline, ellipsisVertical, filterOutline, menuOutline, share } from "ionicons/icons";
+import { add, trash, star, create, filter, search, timeOutline, flagOutline, colorPaletteOutline, pricetagOutline, ellipsisVertical, filterOutline, menuOutline, share, settings, help, informationCircle } from "ionicons/icons";
 import Layout from "../components/Layout";
 import { saveToStorage, loadFromStorage, StorageKeys } from '../utils/storage';
 import { Category } from '../types';
@@ -113,10 +117,21 @@ const Home: React.FC = () => {
   const [filterCategory, setFilterCategory] = useState<Category | 'all'>('all');
   const [isLoading, setIsLoading] = useState(false);
   const [showActionSheet, setShowActionSheet] = useState(false);
+  const [editItem, setEditItem] = useState<Item | null>(null);
+  const [showDeleteAlert, setShowDeleteAlert] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [showPopover, setShowPopover] = useState(false);
 
   // Save items to localStorage whenever they change
   useEffect(() => {
     saveToStorage(StorageKeys.ITEMS, items);
+  }, [items]);
+
+  // Show loading spinner when items are being updated
+  useEffect(() => {
+    setIsLoading(true);
+    const timer = setTimeout(() => setIsLoading(false), 1000); // Simulate loading time
+    return () => clearTimeout(timer);
   }, [items]);
 
   const handleRefresh = (event: CustomEvent): void => {
@@ -169,23 +184,38 @@ const Home: React.FC = () => {
     setShowAlert(true);
   };
 
+  const handleEditItem = () => {
+    if (editItem) {
+      const updatedItems = items.map(item => 
+        item.id === editItem.id ? { ...item, ...newItem } : item
+      );
+      setItems(updatedItems);
+      saveToStorage(StorageKeys.ITEMS, updatedItems);
+      setEditItem(null);
+      setNewItem({ title: '', description: '', category: 'other' as Category });
+      setShowModal(false);
+      presentToast('Item updated successfully!');
+    }
+  };
+
   const handleAddItem = () => {
     if (newItem.title.trim()) {
-      const newId = crypto.randomUUID(); // Use UUID for unique IDs
+      const newId = editItem ? editItem.id : crypto.randomUUID();
       const itemToAdd: Item = {
         ...newItem,
         id: newId,
-        createdAt: new Date(),
-        favorite: false
+        createdAt: editItem ? editItem.createdAt : new Date(),
+        favorite: editItem ? editItem.favorite : false
       };
       
-      setItems(prev => [...prev, itemToAdd]);
-      saveToStorage(StorageKeys.ITEMS, [...items, itemToAdd]);
-      setNewItem({
-        title: '',
-        description: '',
-        category: 'other'
-      });
+      if (editItem) {
+        handleEditItem();
+      } else {
+        setItems(prev => [...prev, itemToAdd]);
+        saveToStorage(StorageKeys.ITEMS, [...items, itemToAdd]);
+      }
+      
+      setNewItem({ title: '', description: '', category: 'other' });
       setShowModal(false);
       presentToast('Item added successfully!');
     }
@@ -222,6 +252,18 @@ const Home: React.FC = () => {
 
   const filteredItems = getSortedAndFilteredItems();
 
+  // Add a confirmation dialog for deletion
+  const handleDeleteConfirmation = (id: string) => {
+    setSelectedItem(items.find(item => item.id === id) || null);
+    setShowDeleteAlert(true);
+  };
+
+  // Toggle dark mode
+  const toggleDarkMode = () => {
+    setIsDarkMode(!isDarkMode);
+    document.body.classList.toggle('dark', !isDarkMode); // Toggle dark class on body
+  };
+
   return (
     <IonPage>
       <Layout title="Tasks">
@@ -229,14 +271,6 @@ const Home: React.FC = () => {
           {/* Search and Filter Section */}
           <IonCard>
             <IonCardContent>
-              <IonSearchbar
-                animated={true}
-                placeholder="Search items..."
-                debounce={500}
-                value={searchText}
-                onIonChange={e => setSearchText(e.detail.value || '')}
-              />
-              
               <IonSegment 
                 scrollable 
                 value={filterCategory} 
@@ -261,14 +295,12 @@ const Home: React.FC = () => {
           {/* Items List */}
           <IonList>
             {isLoading ? (
-              [...Array(3)].map((_, i) => (
-                <IonItem key={i}>
-                  <IonSkeletonText animated style={{ width: '100%' }} />
-                </IonItem>
-              ))
+              <IonItem>
+                <IonSpinner name="crescent" />
+              </IonItem>
             ) : (
-              getSortedAndFilteredItems().map(item => (
-                <IonItemSliding key={item.id}>
+              filteredItems.map(item => (
+                <IonItemSliding key={item.id} onIonDrag={() => handleDelete(item.id)}>
                   <IonItem className="ion-activatable ripple-parent">
                     <IonAvatar slot="start">
                       <img 
@@ -303,7 +335,7 @@ const Home: React.FC = () => {
                     </IonItemOption>
                   </IonItemOptions>
                   <IonItemOptions side="end">
-                    <IonItemOption color="danger" onClick={() => handleDelete(item.id)}>
+                    <IonItemOption color="danger" onClick={() => handleDeleteConfirmation(item.id)}>
                       <IonIcon slot="icon-only" icon={trash} />
                     </IonItemOption>
                   </IonItemOptions>
@@ -316,6 +348,17 @@ const Home: React.FC = () => {
             isOpen={showActionSheet}
             onDidDismiss={() => setShowActionSheet(false)}
             buttons={[
+              {
+                text: 'Edit',
+                icon: create,
+                handler: () => { 
+                  if (selectedItem) {
+                    setEditItem(selectedItem);
+                    setNewItem({ title: selectedItem.title, description: selectedItem.description, category: selectedItem.category });
+                    setShowModal(true);
+                  }
+                }
+              },
               {
                 text: 'Delete',
                 role: 'destructive',
@@ -355,8 +398,8 @@ const Home: React.FC = () => {
           {/* Add Item Modal */}
           <IonModal isOpen={showModal} onDidDismiss={() => setShowModal(false)}>
             <IonHeader>
-              <IonToolbar>
-                <IonTitle>Add New Item</IonTitle>
+              <IonToolbar color="primary">
+                <IonTitle>{editItem ? 'Edit Item' : 'Add New Item'}</IonTitle>
                 <IonButtons slot="end">
                   <IonButton onClick={() => setShowModal(false)}>Close</IonButton>
                 </IonButtons>
@@ -406,11 +449,67 @@ const Home: React.FC = () => {
                   className="ion-margin"
                   disabled={!newItem.title.trim()}
                 >
-                  Add Item
+                  {editItem ? 'Update Item' : 'Add Item'}
                 </IonButton>
               </form>
             </IonContent>
           </IonModal>
+
+          <IonAlert
+            isOpen={showDeleteAlert}
+            onDidDismiss={() => setShowDeleteAlert(false)}
+            header={'Confirm Delete'}
+            message={`Are you sure you want to delete "${selectedItem?.title}"?`}
+            buttons={[
+              {
+                text: 'Cancel',
+                role: 'cancel',
+                cssClass: 'secondary',
+                handler: () => {}
+              },
+              {
+                text: 'Delete',
+                handler: () => {
+                  if (selectedItem) handleDelete(selectedItem.id);
+                }
+              }
+            ]}
+          />
+
+          {/* Show more details in the alert */}
+          <IonAlert
+            isOpen={showAlert}
+            onDidDismiss={() => setShowAlert(false)}
+            header={selectedItem?.title}
+            message={selectedItem?.description}
+            buttons={['OK']}
+          />
+
+          {/* Add a button to open the options popover */}
+          <IonButtons slot="end">
+            <IonMenuButton onClick={() => setShowPopover(true)} />
+          </IonButtons>
+
+          {/* Popover for options */}
+          <IonPopover
+            isOpen={showPopover}
+            onDidDismiss={() => setShowPopover(false)}
+          >
+            <IonList>
+              <IonItem button onClick={() => { /* Handle settings */ }}>
+                <IonIcon slot="start" icon={settings} />
+                <IonLabel>Settings</IonLabel>
+              </IonItem>
+              <IonItem button onClick={() => { /* Handle help */ }}>
+                <IonIcon slot="start" icon={help} />
+                <IonLabel>Help</IonLabel>
+              </IonItem>
+              <IonItem button onClick={() => { /* Handle about */ }}>
+                <IonIcon slot="start" icon={informationCircle} />
+                <IonLabel>About</IonLabel>
+              </IonItem>
+            </IonList>
+          </IonPopover>
         </IonContent>
       </Layout>
     </IonPage>

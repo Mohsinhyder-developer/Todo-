@@ -25,7 +25,7 @@ const Layout: React.FC<LayoutProps> = ({ title, children }) => {
       </IonContent>
       <IonFooter>
         <IonToolbar color="light">
-          <IonTitle size="small">Do Now</IonTitle>
+          <IonTitle size="small">NavaFlow</IonTitle>
         </IonToolbar>
       </IonFooter>
     </>
