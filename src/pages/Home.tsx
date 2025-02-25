@@ -121,6 +121,7 @@ const Home: React.FC = () => {
   const [showDeleteAlert, setShowDeleteAlert] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [showPopover, setShowPopover] = useState(false);
+  const [undoStack, setUndoStack] = useState<{ action: 'add' | 'delete'; item: Item }[]>([]); // Stack for undo actions
 
   // Save items to localStorage whenever they change
   useEffect(() => {
@@ -149,22 +150,28 @@ const Home: React.FC = () => {
     }, 1000);
   };
 
-  const presentToast = (message: string): void => {
+  const presentToast = (message: string, undoAction?: () => void): void => {
     present({
       message,
-      duration: 1500,
+      duration: 3000,
       position: 'bottom',
-      color: 'success'
+      color: 'success',
+      buttons: undoAction ? [{ text: 'Undo', handler: undoAction }] : [],
     });
   };
 
   const handleDelete = (id: string): void => {
-    setItems(prevItems => {
-      const newItems = prevItems.filter(item => item.id !== id);
-      saveToStorage(StorageKeys.ITEMS, newItems);
-      return newItems;
-    });
-    presentToast('Item deleted');
+    const itemToDelete = items.find(item => item.id === id);
+    if (itemToDelete) {
+      setUndoStack(prev => [...prev, { action: 'delete', item: itemToDelete }]); // Push to undo stack
+      setItems(prevItems => prevItems.filter(item => item.id !== id));
+      presentToast('Item deleted', () => undoDelete(itemToDelete)); // Pass undo action
+    }
+  };
+
+  const undoDelete = (item: Item) => {
+    setItems(prev => [...prev, item]); // Restore the deleted item
+    presentToast('Item restored');
   };
 
   const toggleFavorite = (id: string): void => {
@@ -200,25 +207,23 @@ const Home: React.FC = () => {
 
   const handleAddItem = () => {
     if (newItem.title.trim()) {
-      const newId = editItem ? editItem.id : crypto.randomUUID();
       const itemToAdd: Item = {
+        id: crypto.randomUUID(),
+        createdAt: new Date(),
+        favorite: false,
         ...newItem,
-        id: newId,
-        createdAt: editItem ? editItem.createdAt : new Date(),
-        favorite: editItem ? editItem.favorite : false
       };
-      
-      if (editItem) {
-        handleEditItem();
-      } else {
-        setItems(prev => [...prev, itemToAdd]);
-        saveToStorage(StorageKeys.ITEMS, [...items, itemToAdd]);
-      }
-      
+      setItems(prev => [...prev, itemToAdd]);
+      setUndoStack(prev => [...prev, { action: 'add', item: itemToAdd }]); // Push to undo stack
+      presentToast('Item added successfully!', () => undoAdd(itemToAdd)); // Pass undo action
       setNewItem({ title: '', description: '', category: 'other' });
       setShowModal(false);
-      presentToast('Item added successfully!');
     }
+  };
+
+  const undoAdd = (item: Item) => {
+    setItems(prev => prev.filter(i => i.id !== item.id)); // Remove the added item
+    presentToast('Item removed');
   };
 
   const getSortedAndFilteredItems = () => {
