@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://todo-ionic.vercel.app/
+
+# Disallow any temporary files or directories if needed
+# Disallow: /temp/
+# Disallow: /private/ 
+
+Strict-Transport-Security: max-age=31536000; includeSubDomains 
